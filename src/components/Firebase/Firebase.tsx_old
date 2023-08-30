@@ -1,0 +1,162 @@
+import React, { FC, useRef, useEffect, useState } from "react";
+import "./Firebase.css";
+import { initializeApp } from "firebase/app";
+import "firebase/analytics";
+import { get, getDatabase, ref } from "firebase/database";
+import Plot from "react-plotly.js";
+import Plotly from "plotly.js";
+import { data } from "jquery";
+
+export const initializeFirebase = () => {
+  // Initialize Firebase
+  const appreturn = initializeApp({
+    apiKey: "AIzaSyDIy-XQqLfxP1zEsxwHzF8Y33ak4Pyr0A4",
+    authDomain: "voyteklabstudy.firebaseapp.com",
+    databaseURL: "https://voyteklabstudy-default-rtdb.firebaseio.com",
+    projectId: "voyteklabstudy",
+    storageBucket: "voyteklabstudy.appspot.com",
+    messagingSenderId: "565549672209",
+    appId: "1:565549672209:web:fcd188621ae303d0b08eb0",
+    measurementId: "G-ZNQCNC99NZ",
+  });
+  console.log(appreturn);
+  // getAnalytics(appreturn);
+};
+
+export const FirebaseComponent = (): JSX.Element => {
+  // choose sigs_to_show random signals to display out of total_sigs signals
+  // store their database references in sig_refs
+
+  const [getPlots, setPlots] = useState<JSX.Element[]>([]);
+  useEffect(() => {
+    let db = getDatabase();
+    let sig_idxs: number[] = [];
+    let sig_refs: string[] = [];
+    let total_sigs = 48;
+    let sigs_to_show = 10;
+    var jsonData = {
+      sigs: {} as { [key: string]: any },
+      users: {} as { [key: string]: any },
+    };
+
+    const make_new_x_burst = (x0: number, x1: number) => {
+      let new_x_burst: number[] = [];
+      for (let i = x0; i < x1; i++) {
+        new_x_burst.push(i);
+      }
+      return new_x_burst;
+    };
+
+    const make_corr_y_burst = (x0: number, x1: number, y: number[]) => {
+      let new_y_burst: number[] = [];
+      for (let i = x0; i < x1; i++) {
+        new_y_burst.push(y[i]);
+      }
+      return new_y_burst;
+    };
+
+    // picking sigs to show
+    for (let i = 0; i < sigs_to_show; ) {
+      // https://www.w3schools.com/JS/js_random.asp
+      let rand_int = Math.floor(Math.random() * total_sigs);
+      if (sig_idxs.includes(rand_int)) {
+        // find a new random integer because this one is taken
+        continue;
+      } else {
+        // increment on this step because this is when we have a NEW random int
+        sig_idxs.push(rand_int);
+        i++;
+      }
+    }
+
+    console.log(sig_idxs);
+    if (sig_idxs.length !== sigs_to_show) {
+      console.error("Error: sig_idxs.length != sigs_to_show");
+    }
+
+    for (let i = 0; i < sig_idxs.length; i++) {
+      sig_refs.push(`sig_${sig_idxs[i]}`);
+    }
+    async function getSigs() {
+      console.log("running callback");
+      // get all json data for each sig
+      for (let i = 0; i < sig_refs.length; i++) {
+        const dbref = ref(db, sig_refs[i]);
+        await get(dbref)
+          .then((snapshot) => {
+            if (snapshot.exists()) {
+              console.log(snapshot.val());
+              jsonData.sigs[sig_refs[i]] = snapshot.val();
+              console.log(jsonData);
+            } else {
+              console.log("No data available");
+            }
+          })
+          .then(() => {
+            console.log(jsonData.sigs[sig_refs[i]]);
+          });
+      }
+
+      // show json data in individual plotly graphs
+      const plots: JSX.Element[] = [];
+      for (let i = 0; i < sig_refs.length; i++) {
+        const sig = jsonData.sigs[sig_refs[i]];
+        if (sig === undefined) {
+          console.error(`${sig_refs} is undefined`);
+          continue;
+        }
+        plots.push(
+          <div id={`plot${i}`} key={`plot${i}`}>
+            <Plot
+              data={[
+                {
+                  x: (() => {
+                    // console.error(sig === undefined);
+
+                    console.log(sig);
+                    const x = [];
+                    for (let j = 0; j < sig.length; j++) {
+                      x.push(String(j));
+                    }
+                    return x;
+                  })(),
+                  y: jsonData.sigs[sig_refs[i]],
+                  type: "scatter",
+                  mode: "lines+markers",
+                  marker: { color: "red" },
+                },
+              ]}
+              layout={{
+                width: 720,
+                height: 480,
+                title: sig_refs[i],
+                xaxis: {
+                  range: [0, sig.length],
+                },
+                yaxis: {
+                  range: [
+                    () => {
+                      Math.min(...jsonData.sigs[sig_refs[i]]);
+                    },
+                    () => {
+                      Math.max(...jsonData.sigs[sig_refs[i]]);
+                    },
+                  ],
+                },
+              }}
+            />
+          </div>
+        );
+      }
+      setPlots(plots);
+    }
+    getSigs();
+  }, []);
+
+  return (
+    <div className="Firebase">
+      <h1>Plotly plots</h1>
+      <div className="plots">{getPlots}</div>
+    </div>
+  );
+};
