@@ -2,8 +2,10 @@ import React, { FC, useRef, useEffect, useState } from "react";
 import "./Firebase.css";
 import { initializeApp } from "firebase/app";
 import "firebase/analytics";
-import { DataSnapshot, get, getDatabase, ref, set } from "firebase/database";
+import { DataSnapshot, get, getDatabase, ref } from "firebase/database";
 import Plot from "react-plotly.js";
+import Plotly, { Layout } from "plotly.js";
+import { data } from "jquery";
 
 const initializeFirebase = () => {
   // Initialize Firebase
@@ -22,32 +24,29 @@ const initializeFirebase = () => {
 };
 
 interface myState {
-  name: string;
-  x_selections: number[][];
   plots: any[];
 }
-const layout_params: any = {
-  // Layout
-  dragmode: "select",
-  selectdirection: "h",
-  xaxis: { zeroline: false },
-  showlegend: true,
-  width: 1000,
-  height: 150,
-  margin: {
+const layout_params: any={
+// Layout
+dragmode: 'select',
+selectdirection: "h",
+xaxis: { zeroline: false },
+showlegend: true,
+width: 1000,
+height: 150,
+margin: {
     l: 25,
     r: 25,
     b: 25,
     t: 25,
-    pad: 5,
-  },
-};
+    pad: 5
+  }
+}
 
 class FirebaseComponent extends React.Component {
   constructor(props: any) {
     super(props);
     this.state = {
-      x_selections: [] as number[][],
       plots: [] as any[],
     };
     this.initializePage();
@@ -56,16 +55,9 @@ class FirebaseComponent extends React.Component {
   initializePage() {
     let sigs, users;
     let sig_refs: string[] = [];
-    let test_sigs: number = 9;
+    let test_sigs: number = 9 ;
     this.getSigCount().then((num_sigs) => {
       console.log(num_sigs);
-      const new_x_selections: number[][] = [];
-      for (let i = 0; i < test_sigs; i++) {
-        new_x_selections.push([-1, -1]);
-      }
-      this.setState({
-        x_selections: new_x_selections,
-      });
       if (num_sigs == 0) {
         console.log("no sigs available");
         return;
@@ -89,41 +81,35 @@ class FirebaseComponent extends React.Component {
         console.log(y_list);
         const plots: any[] = [];
         const plotly_burst: any[] = [];
+        const plotly_before: any[] = [];
+        const plotly_after: any[] = [];
         for (let i = 0; i < x_list.length; i++) {
           const data_elements_before = {
             x: [],
             y: [],
-            type: "scatter",
+            type: "scattergl",
             name: `sig_${i}`,
             marker: { color: "black" },
           };
           const data_elements_burst = {
             x: x_list[i],
             y: y_list[i],
-            type: "scatter",
+            type: "scattergl",
             name: `sig_${i}`,
             marker: { color: "red" },
           };
           const data_elements_after = {
             x: [],
             y: [],
-            type: "scatter",
+            type: "scattergl",
             name: `sig_${i}`,
             marker: { color: "black" },
-          };
-          const data_elements_alldata = {
-            x: x_list[i],
-            y: y_list[i],
-            type: "scatter",
-            name: `sig_${i}`,
-            marker: { color: "red" },
           };
 
           plotly_burst.push([
             data_elements_before,
             data_elements_burst,
             data_elements_after,
-            data_elements_alldata,
           ]);
         }
         console.log(plotly_burst.length);
@@ -155,36 +141,11 @@ class FirebaseComponent extends React.Component {
     return new_x_burst;
   }
 
-  make_padded_slice_y(y: number[], x0: number, x1: number): number[] {
-    let padded_y: number[] = [];
-    for (let i = 0; i < x0; i++) {
-      padded_y.push(NaN);
-    }
-    for (let i = x0; i < x1; i++) {
-      padded_y.push(y[i]);
-    }
-    for (let i = x1; i < y.length; i++) {
-      padded_y.push(NaN);
-    }
-    return padded_y;
-  }
-
   make_corr_y_burst(x0: number, x1: number, y: number[]): number[] {
     let new_y_burst: number[] = [];
-    for (let i = 0; i < x0; i++) {
-      new_y_burst.push(NaN);
-    }
     for (let i = x0; i < x1; i++) {
-      if (y[i] == undefined) {
-        console.log(`y[${i}] is undefined`);
-        continue;
-      }
       new_y_burst.push(y[i]);
     }
-    for (let i = x1; i < y.length; i++) {
-      new_y_burst.push(NaN);
-    }
-    console.log(new_y_burst);
     return new_y_burst;
   }
 
@@ -245,45 +206,53 @@ class FirebaseComponent extends React.Component {
   // new_x_before=[0,1,2,...,x0-1]
   // new_x_burst=[x0,x0+1,...,x1-1]
   // new_x_after=[x1,x1+1,...,n-1]
-  updatePlot(index: number, x0: number, x1: number) {
-    console.log(`updating plot ${index}`);
-    const { plots, x_selections } = this.state as myState;
-    const plot_4_tuple = plots[index];
-    // at any moment, the concatenated x_vals and y_vals have same length: the signal length
-    const all_x_vals = plot_4_tuple[3].x;
-    const all_y_vals = plot_4_tuple[3].y;
 
+  updatePlot(index: number, x0: number, x1: number) {
+    const { plots } = this.state as myState;
+    const plot_i_3_tuple = plots[index];
+    // at any moment, the concatenated x_vals and y_vals have same length: the signal length
+    const all_x_vals = plot_i_3_tuple[0].x
+      .concat(plot_i_3_tuple[1].x)
+      .concat(plot_i_3_tuple[2].x);
+    const all_y_vals = plot_i_3_tuple[0].y
+      .concat(plot_i_3_tuple[1].y)
+      .concat(plot_i_3_tuple[2].y);
+    
+    // partitioning the x_vals and y_vals into 3 parts described by x0,x1
+    const new_x_before = this.make_new_x_burst(0, x0);
+    const new_y_before = this.make_corr_y_burst(0, x0, all_y_vals);
+    const new_x_burst = this.make_new_x_burst(0, x1);
+    const new_y_burst = this.make_corr_y_burst(x0, x1, all_y_vals);
+    const new_x_after = this.make_new_x_burst(x1, all_x_vals.length);
+    const new_y_after = this.make_corr_y_burst(x1,all_x_vals.length,all_y_vals);
     const data_elements_before = {
-      x: [...all_x_vals],
-      y: this.make_padded_slice_y(all_y_vals, 0, x0),
-      type: "scatter",
+      x: new_x_before,
+      y: new_y_before,
+      type: "scattergl",
       name: `sig_${index}`,
       marker: { color: "black" },
     };
     const data_elements_burst = {
-      x: [...all_x_vals],
-      y: this.make_corr_y_burst(x0, x1, all_y_vals),
-      type: "scatter",
+      x: new_x_burst,
+      y: new_y_burst,
+      type: "scattergl",
       name: `sig_${index}`,
       marker: { color: "red" },
     };
     const data_elements_after = {
-      x: [...all_x_vals],
-      y: this.make_padded_slice_y(all_y_vals, x1, all_y_vals.length),
-      type: "scatter",
+      x: new_x_after,
+      y: new_y_after,
+      type: "scattergl",
       name: `sig_${index}`,
       marker: { color: "black" },
     };
-    const new_plot_4_tuple = [
+    const new_plot_i_3_tuple = [
       data_elements_before,
       data_elements_burst,
       data_elements_after,
-      plot_4_tuple[3],
     ];
-    plots[index] = new_plot_4_tuple;
-    x_selections[index] = [x0, x1];
+    plots[index] = new_plot_i_3_tuple;
     this.setState({
-      x_selections: x_selections,
       plots: plots,
     });
   }
@@ -298,63 +267,27 @@ class FirebaseComponent extends React.Component {
               <Plot
                 key={i}
                 data={[plotData[0], plotData[1], plotData[2]]}
-                layout={JSON.parse(JSON.stringify(layout_params))}
-                onSelected={(e) => {
-                  console.log(`plot ${i} selected`);
-                  // console.log(e);
-                  if (e == undefined) {
-                    this.updatePlot(i, 0, plotData[3].x.length);
-                    return;
+                layout={layout_params}
+                onSelected={
+                  (e) => {
+                    console.log(e);
+                    if (e.range == undefined) {
+                      return;
+                    }
+                    // console.log(data)
+                    const x0 = e.range.x[0];
+                    const x1 = e.range.x[1];
+                    console.log(x0);
+                    console.log(x1);
+                    if (x0 == undefined || x1 == undefined) {
+                      return;
+                    }
+                    this.updatePlot(i, x0, x1);
                   }
-                  if (e.range == undefined) {
-                    return;
-                  }
-                  // console.log(data)
-                  const x0 = Math.floor(e.range.x[0]);
-                  const x1 = Math.floor(e.range.x[1]);
-                  // console.log(x0);
-                  // console.log(x1);
-                  if (x0 == undefined || x1 == undefined) {
-                    return;
-                  }
-                  this.updatePlot(i, x0, x1);
-                  console.log(this.state);
-                }}
+                }
               />
             </div>
           ))}
-          <input
-            type="text"
-            placeholder="Enter name"
-            onChange={(event) => {
-              const value = event.target.value;
-              for (let i = 0; i < value.length; i++) {
-                if (value[i] == "@") {
-                  alert("No spaces allowed in name");
-                  return;
-                }
-              }
-              this.setState({ name: event.target.value });
-            }}
-          />
-          <button
-            onClick={() => {
-              console.log("submitting selections");
-              console.log(this.state);
-              const { x_selections, name } = this.state as myState;
-              const time_millis = Date.now().toString();
-              console.log(x_selections);
-              set(ref(getDatabase(), `selections/${name}@${time_millis}`), {
-                selections: x_selections,
-                time_millis: time_millis,
-                name: name,
-              }).then(() => {
-                console.log("selections submitted");
-              });
-            }}
-          >
-            Submit
-          </button>
         </div>
       );
     } else {
