@@ -1,8 +1,19 @@
-import React, { FC, useRef, useEffect, useState } from "react";
+/**
+ * Author: Kenton Guarian
+ * Date: 2023-09-02
+ * Description: This file contains the FirebaseComponent class.
+ * The FirebaseComponent class is a React component that renders
+ * a list of Plotly <Plot/> components. The data for the plots
+ * is retrieved from the firebase Realtime Database (rtdb) server. The user can
+ * select a range of data in a plot and submit the selection
+ * to the rtdb server in this component.
+ */
+
+import React from "react";
 import "./Firebase.css";
 import { initializeApp } from "firebase/app";
 import "firebase/analytics";
-import { DataSnapshot, get, getDatabase, ref, set } from "firebase/database";
+import { get, getDatabase, ref, set } from "firebase/database";
 import Plot from "react-plotly.js";
 
 const initializeFirebase = () => {
@@ -44,6 +55,9 @@ const layout_params: any = {
 };
 
 class FirebaseComponent extends React.Component {
+  // this constructor wants to set the state and initialize the page
+  // x_selections will be sent to the firebase rtdb server
+  // and plots will be rendered on the page
   constructor(props: any) {
     super(props);
     this.state = {
@@ -52,44 +66,72 @@ class FirebaseComponent extends React.Component {
     };
     this.initializePage();
   }
+  // initializePage gets the number of sigs available
+  // (partly to make sure the db server is up, running, and reachable).
+  // Then it gets a random selection of sigs to show, gets the data for them, and sets the state.
+  // initializePage sets the state with lists of lists of data props for Plotly <Plot/> components.
+  // render() renders the <Plot/> components.
 
   initializePage() {
-    let sigs, users;
-    let sig_refs: string[] = [];
-    let test_sigs: number = 9;
+    const test_sigs: number = 9;
     this.getSigCount().then((num_sigs) => {
-      console.log(num_sigs);
-      const new_x_selections: number[][] = [];
+      if (num_sigs < test_sigs) {
+        console.log("not enough sigs available");
+        alert(
+          "not enough sigs available. " +
+            "This means we couldn't get the" +
+            "number of sigs from the firebase " +
+            "server or there are not enough sigs in the database."
+        );
+        return;
+      }
+
+      // This is the list we'll use to initialize the state
+      const x_selections: number[][] = [];
+      // -1 is an invalid value for x0 and x1
+      // so if we see a -1 in the rtdb, we know that the user
+      // has not selected a burst range for that signal
       for (let i = 0; i < test_sigs; i++) {
-        new_x_selections.push([-1, -1]);
+        x_selections.push([-1, -1]);
       }
       this.setState({
-        x_selections: new_x_selections,
+        x_selections: x_selections,
       });
       if (num_sigs == 0) {
         console.log("no sigs available");
+        alert("no sigs available.");
         return;
       }
+      // choose random sigs to show
       const sig_idxs = this.pick_sigs(test_sigs, num_sigs);
+      // make the db refs for the sigs
       const sig_refs = this.refs_from_idxs(sig_idxs);
       console.log(sig_refs);
+      // get data for the sigs
       const dataPromise = this.getSigs(sig_refs);
+      // with the data, make the plots:
       dataPromise.then((data) => {
+        //x_list is a list of lists of x-axes/time (one for each sig)
         const x_list = [];
+        //y_list is a list of lists of y-axes/voltage time series (one for each sig)
         const y_list = [...data];
-
+        // db check
         if (y_list.length != test_sigs) {
           console.log("wrong number of sigs");
           return;
         }
+        // make & store the x-axis for each sig
         for (let i = 0; i < y_list.length; i++) {
-          x_list.push(this.make_new_x_burst(0, y_list[i].length));
+          x_list.push(this.new_timeseries_from_intervalas(0, y_list[i].length));
         }
-        console.log(x_list);
-        console.log(y_list);
-        const plots: any[] = [];
         const plotly_burst: any[] = [];
+        // Plotly <Plot/> components take a list of data elements
+        // we plan to pass the before, burst, and after data elements
+        // to the <Plot/> components. before and after will be plotted black
+        // and burst will be plotted red.
         for (let i = 0; i < x_list.length; i++) {
+          // updatePlot will update the before, burst, and after plots
+          // so the before and after plots won't always be empty
           const data_elements_before = {
             x: [],
             y: [],
@@ -119,6 +161,10 @@ class FirebaseComponent extends React.Component {
             marker: { color: "red" },
           };
 
+          // alldata allows us to make the selections without
+          // having to concatenate the before, burst, and after data
+          // elements's x and y props then slice them to get the new
+          // selection
           plotly_burst.push([
             data_elements_before,
             data_elements_burst,
@@ -133,13 +179,14 @@ class FirebaseComponent extends React.Component {
       });
     });
   }
+  // db function. gets the number of sigs available
+  // from the firebase rtdb server
+  // ref returns a promise and is thus asynchronous
   async getSigCount(): Promise<number> {
     const dbref = ref(getDatabase(), "n_sigs");
     const snapshot = await get(dbref);
-    let val = 0;
     if (snapshot.exists()) {
       console.log(snapshot.val());
-      const num_sigs = snapshot.val();
       return snapshot.val();
     } else {
       console.log("n_sig data unavailable from firebase");
@@ -147,7 +194,11 @@ class FirebaseComponent extends React.Component {
     }
   }
 
-  make_new_x_burst(x0: number, x1: number): number[] {
+  // make_new_x_burst makes a list of time points for a signal.
+  // it assumes that the signal is indexed by integers.
+  // x0 is the start of the burst range
+  // x1 is the integer above the end of the burst range
+  new_timeseries_from_intervalas(x0: number, x1: number): number[] {
     let new_x_burst: number[] = [];
     for (let i = x0; i < x1; i++) {
       new_x_burst.push(i);
@@ -155,7 +206,9 @@ class FirebaseComponent extends React.Component {
     return new_x_burst;
   }
 
-  make_padded_slice_y(y: number[], x0: number, x1: number): number[] {
+  // new_y_slice makes a list of y-axes/voltage for a signal
+  // it assumes that the signal is indexed by integers.
+  new_y_slice(y: number[], x0: number, x1: number): number[] {
     let padded_y: number[] = [];
     for (let i = 0; i < x0; i++) {
       padded_y.push(NaN);
@@ -169,25 +222,8 @@ class FirebaseComponent extends React.Component {
     return padded_y;
   }
 
-  make_corr_y_burst(x0: number, x1: number, y: number[]): number[] {
-    let new_y_burst: number[] = [];
-    for (let i = 0; i < x0; i++) {
-      new_y_burst.push(NaN);
-    }
-    for (let i = x0; i < x1; i++) {
-      if (y[i] == undefined) {
-        console.log(`y[${i}] is undefined`);
-        continue;
-      }
-      new_y_burst.push(y[i]);
-    }
-    for (let i = x1; i < y.length; i++) {
-      new_y_burst.push(NaN);
-    }
-    console.log(new_y_burst);
-    return new_y_burst;
-  }
-
+  // pick_sigs picks a random selection of sigs to show
+  // it does not actually get the data for the sigs
   pick_sigs(sigs_to_show: number, total_sigs: number): number[] {
     let sig_idxs: number[] = [];
     // picking sigs to show
@@ -206,6 +242,7 @@ class FirebaseComponent extends React.Component {
     return sig_idxs;
   }
 
+  // index -> `sig_${index}`
   refs_from_idxs(sig_idxs: number[]): string[] {
     let sig_refs: string[] = [];
     for (let i = 0; i < sig_idxs.length; i++) {
@@ -214,37 +251,47 @@ class FirebaseComponent extends React.Component {
     return sig_refs;
   }
 
+  // get data for each sig from the firebase rtdb server
   async getSigs(sig_refs: string[]): Promise<number[][]> {
     console.log("running callback");
-    const values: number[][] = [];
-    // get all json data for each sig
+    // these will be the randomized collection of time series
+    const values_object: number[][] = [];
+    // promise_array will be a list of promises
+    // that we will wait for to resolve.
+    // When they resolve, we will have the data for each signal
     const promise_array = [];
+    // get all json data promises for each sig and store them in promise_array
     for (let i = 0; i < sig_refs.length; i++) {
       const dbref = ref(getDatabase(), `sigs/${sig_refs[i]}`);
       promise_array.push(get(dbref));
     }
-    const values2: Promise<number[][]> = Promise.all(promise_array).then(
+    // wait for all promises to resolve ("db get" to finish)
+    const values_promise: Promise<number[][]> = Promise.all(promise_array).then(
+    // use the db snapshot data to make the time series
       (snapshots) => {
         console.log(snapshots);
         for (let i = 0; i < snapshots.length; i++) {
           if (snapshots[i].exists()) {
             console.log(snapshots[i].val());
-            values.push(snapshots[i].val() as number[]);
+            values_object.push(snapshots[i].val() as number[]);
           } else {
+            // TODO: handle this error better
             console.log(`snapshot ${i} unavailable`);
           }
         }
-        console.log(values);
-        return values;
+        console.log(values_object);
+        return values_object;
       }
     );
-    return values2;
+    return values_promise;
   }
 
   // Let n=x.length
   // new_x_before=[0,1,2,...,x0-1]
   // new_x_burst=[x0,x0+1,...,x1-1]
   // new_x_after=[x1,x1+1,...,n-1]
+  // then the values of new_y_* variables are
+  // new_y_before=[NaN,...,NaN,y[0],...,y[1]-1,NaN,...,NaN]
   updatePlot(index: number, x0: number, x1: number) {
     console.log(`updating plot ${index}`);
     const { plots, x_selections } = this.state as myState;
@@ -255,21 +302,21 @@ class FirebaseComponent extends React.Component {
 
     const data_elements_before = {
       x: [...all_x_vals],
-      y: this.make_padded_slice_y(all_y_vals, 0, x0),
+      y: this.new_y_slice(all_y_vals, 0, x0),
       type: "scatter",
       name: `sig_${index}`,
       marker: { color: "black" },
     };
     const data_elements_burst = {
       x: [...all_x_vals],
-      y: this.make_corr_y_burst(x0, x1, all_y_vals),
+      y: this.new_y_slice(all_y_vals, x0, x1),
       type: "scatter",
       name: `sig_${index}`,
       marker: { color: "red" },
     };
     const data_elements_after = {
       x: [...all_x_vals],
-      y: this.make_padded_slice_y(all_y_vals, x1, all_y_vals.length),
+      y: this.new_y_slice(all_y_vals, x1, all_y_vals.length),
       type: "scatter",
       name: `sig_${index}`,
       marker: { color: "black" },
@@ -278,8 +325,11 @@ class FirebaseComponent extends React.Component {
       data_elements_before,
       data_elements_burst,
       data_elements_after,
+      // we don't need to update the alldata plot
+      // it should never change
       plot_4_tuple[3],
     ];
+    // only update plot[index].
     plots[index] = new_plot_4_tuple;
     x_selections[index] = [x0, x1];
     this.setState({
@@ -287,7 +337,36 @@ class FirebaseComponent extends React.Component {
       plots: plots,
     });
   }
+  isValidFirebasePath(path: string) {
+    // Firebase paths must be UTF-8 encoded, non-empty strings and can't contain ".", ",", "$", "#", "[", "]", "/", or ASCII control characters 0-31 or 127
+    if (typeof path !== "string" || path.length === 0 || path.length > 768) {
+      return false;
+    }
+    const invalidCharacters = [
+      "@",
+      ".",
+      ",",
+      "$",
+      "#",
+      "[",
+      "]",
+      "/",
+      ...Array.from({ length: 32 }, (_, i) => String.fromCharCode(i)),
+      String.fromCharCode(127),
+    ];
+    for (let i = 0; i < invalidCharacters.length; i++) {
+      if (path.includes(invalidCharacters[i])) {
+        return false;
+      }
+    }
+    return true;
+  }
 
+  // Layout:
+  // <div> : Named after component
+  //  *List of Plots*
+  //  *input field* *submit button*
+  // </div>
   render() {
     const { plots } = this.state as myState;
     if (plots.length > 0) {
@@ -309,11 +388,9 @@ class FirebaseComponent extends React.Component {
                   if (e.range == undefined) {
                     return;
                   }
-                  // console.log(data)
+                  // the Plotly selection event returns non-integral floats
                   const x0 = Math.floor(e.range.x[0]);
                   const x1 = Math.floor(e.range.x[1]);
-                  // console.log(x0);
-                  // console.log(x1);
                   if (x0 == undefined || x1 == undefined) {
                     return;
                   }
@@ -329,8 +406,8 @@ class FirebaseComponent extends React.Component {
             onChange={(event) => {
               const value = event.target.value;
               for (let i = 0; i < value.length; i++) {
-                if (value[i] == "@") {
-                  alert("No spaces allowed in name");
+                if (!this.isValidFirebasePath(value)) {
+                  alert("No spaces, slashes, or @'s allowed in name");
                   return;
                 }
               }
@@ -344,6 +421,7 @@ class FirebaseComponent extends React.Component {
               const { x_selections, name } = this.state as myState;
               const time_millis = Date.now().toString();
               console.log(x_selections);
+              // submit the selections to the firebase rtdb server with a timestamp ensuring uniqueness and traceability
               set(ref(getDatabase(), `selections/${name}@${time_millis}`), {
                 selections: x_selections,
                 time_millis: time_millis,
