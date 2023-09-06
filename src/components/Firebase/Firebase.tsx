@@ -28,13 +28,15 @@ const initializeFirebase = () => {
     appId: "1:565549672209:web:fcd188621ae303d0b08eb0",
     measurementId: "G-ZNQCNC99NZ",
   });
-  console.log(appreturn);
+  // turn on if you want sensitive data to be printed to console.log
+  // console.log(appreturn);
   // getAnalytics(appreturn);
 };
 
 interface myState {
   name: string;
   x_selections: number[][];
+  indices: number[];
   plots: any[];
 }
 const layout_params: any = {
@@ -239,6 +241,9 @@ class FirebaseComponent extends React.Component {
         i++;
       }
     }
+    this.setState({
+      indices: sig_idxs,
+    });
     return sig_idxs;
   }
 
@@ -418,7 +423,7 @@ class FirebaseComponent extends React.Component {
             onClick={() => {
               console.log("submitting selections");
               console.log(this.state);
-              const { x_selections, name } = this.state as myState;
+              const { x_selections, name, indices } = this.state as myState;
               const time_millis = Date.now().toString();
               console.log(x_selections);
               // submit the selections to the firebase rtdb server with a timestamp ensuring uniqueness and traceability
@@ -426,6 +431,7 @@ class FirebaseComponent extends React.Component {
                 selections: x_selections,
                 time_millis: time_millis,
                 name: name,
+                indices: indices,
               }).then(() => {
                 console.log("selections submitted");
               });
