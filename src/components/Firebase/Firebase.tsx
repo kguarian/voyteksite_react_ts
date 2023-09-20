@@ -38,7 +38,13 @@ interface myState {
   x_selections: number[][];
   indices: number[];
   plots: any[];
+  current_plot_idx: number;
+  sig_count: number;
+  display_count: number;
+  submitted: boolean;
+  begun: boolean;
 }
+
 const layout_params: any = {
   // Layout
   dragmode: "select",
@@ -60,11 +66,17 @@ class FirebaseComponent extends React.Component {
   // this constructor wants to set the state and initialize the page
   // x_selections will be sent to the firebase rtdb server
   // and plots will be rendered on the page
+  sigs_for_test = 9;
   constructor(props: any) {
     super(props);
     this.state = {
       x_selections: [] as number[][],
       plots: [] as any[],
+      current_plot_idx: 0 as number,
+      sig_count: 0 as number,
+      display_count: 0 as number,
+      submitted: false as boolean,
+      begun: false as boolean,
     };
     this.initializePage();
   }
@@ -75,7 +87,8 @@ class FirebaseComponent extends React.Component {
   // render() renders the <Plot/> components.
 
   initializePage() {
-    const test_sigs: number = 9;
+    const test_sigs: number = this.sigs_for_test;
+    console.log(this.state);
     this.getSigCount().then((num_sigs) => {
       if (num_sigs < test_sigs) {
         console.log("not enough sigs available");
@@ -87,6 +100,8 @@ class FirebaseComponent extends React.Component {
         );
         return;
       }
+
+      this.setState({ display_count: test_sigs });
 
       // This is the list we'll use to initialize the state
       const x_selections: number[][] = [];
@@ -189,6 +204,7 @@ class FirebaseComponent extends React.Component {
     const snapshot = await get(dbref);
     if (snapshot.exists()) {
       console.log(snapshot.val());
+      this.setState({ sig_count: snapshot.val() });
       return snapshot.val();
     } else {
       console.log("n_sig data unavailable from firebase");
@@ -272,7 +288,7 @@ class FirebaseComponent extends React.Component {
     }
     // wait for all promises to resolve ("db get" to finish)
     const values_promise: Promise<number[][]> = Promise.all(promise_array).then(
-    // use the db snapshot data to make the time series
+      // use the db snapshot data to make the time series
       (snapshots) => {
         console.log(snapshots);
         for (let i = 0; i < snapshots.length; i++) {
@@ -373,74 +389,124 @@ class FirebaseComponent extends React.Component {
   //  *input field* *submit button*
   // </div>
   render() {
-    const { plots } = this.state as myState;
+    console.log("rendering");
+    const { plots, current_plot_idx, sig_count, display_count, submitted, begun } = this
+      .state as myState;
+
+    console.log(`current idx: ${current_plot_idx}. Total: ${display_count}`);
     if (plots.length > 0) {
-      return (
-        <div className="FirebaseComponent">
-          {plots.map((plotData, i) => (
+      let plotData = plots[current_plot_idx];
+      if (!begun) {
+        return(
+        <button
+        className="input_fb"
+        onClick={() => {
+          console.log("going to next signal");
+          this.setState({ begun: true });
+        }}
+      >
+        Begin
+      </button>)
+      }
+      if (current_plot_idx < display_count) {
+        return (
+          <div className="FirebaseComponent">
+            {
+              <div>
+                <Plot
+                  key={current_plot_idx}
+                  data={[plotData[0], plotData[1], plotData[2]]}
+                  layout={JSON.parse(JSON.stringify(layout_params))}
+                  config={{
+                    scrollZoom: true,
+                    responsive: false,
+                  }}
+                  onSelected={(e) => {
+                    console.log(`plot ${current_plot_idx} selected`);
+                    // console.log(e);
+                    if (e == undefined) {
+                      this.updatePlot(
+                        current_plot_idx,
+                        0,
+                        plotData[3].x.length
+                      );
+                      return;
+                    }
+                    if (e.range == undefined) {
+                      return;
+                    }
+                    // the Plotly selection event returns non-integral floats
+                    const x0 = Math.floor(e.range.x[0]);
+                    const x1 = Math.floor(e.range.x[1]);
+                    if (x0 == undefined || x1 == undefined) {
+                      return;
+                    }
+                    this.updatePlot(current_plot_idx, x0, x1);
+                    console.log(this.state);
+                  }}
+                />
+              </div>
+            }
+            <button
+              className="input_fb"
+              onClick={() => {
+                console.log("going to next signal");
+                this.setState({ current_plot_idx: current_plot_idx + 1 });
+              }}
+            >
+              Next
+            </button>
+          </div>
+        );
+      } else if (sig_count == 0) {
+        return <div>There are no sigs to show</div>;
+      } else {
+        if (submitted) {
+          return <div className="input_fb">Thank you for your participation!</div>;
+        } else {
+          return (
             <div>
-              <Plot
-                key={i}
-                data={[plotData[0], plotData[1], plotData[2]]}
-                layout={JSON.parse(JSON.stringify(layout_params))}
-                onSelected={(e) => {
-                  console.log(`plot ${i} selected`);
-                  // console.log(e);
-                  if (e == undefined) {
-                    this.updatePlot(i, 0, plotData[3].x.length);
-                    return;
+              <input
+                className="input_fb"
+                type="text"
+                placeholder="Enter name"
+                onChange={(event) => {
+                  const value = event.target.value;
+                  for (let i = 0; i < value.length; i++) {
+                    if (!this.isValidFirebasePath(value)) {
+                      alert("No spaces, slashes, or @'s allowed in name");
+                      return;
+                    }
                   }
-                  if (e.range == undefined) {
-                    return;
-                  }
-                  // the Plotly selection event returns non-integral floats
-                  const x0 = Math.floor(e.range.x[0]);
-                  const x1 = Math.floor(e.range.x[1]);
-                  if (x0 == undefined || x1 == undefined) {
-                    return;
-                  }
-                  this.updatePlot(i, x0, x1);
-                  console.log(this.state);
+                  this.setState({ name: event.target.value });
                 }}
               />
+              <button
+                className="input_fb"
+                onClick={() => {
+                  console.log("submitting selections");
+                  console.log(this.state);
+                  const { x_selections, name, indices } = this.state as myState;
+                  const time_millis = Date.now().toString();
+                  console.log(x_selections);
+                  // submit the selections to the firebase rtdb server with a timestamp ensuring uniqueness and traceability
+                  set(ref(getDatabase(), `selections/${name}@${time_millis}`), {
+                    selections: x_selections,
+                    time_millis: time_millis,
+                    name: name,
+                    indices: indices,
+                  }).then(() => {
+                    console.log("selections submitted");
+                    this.setState({ submitted: true });
+                  });
+                }}
+              >
+                Submit
+              </button>
             </div>
-          ))}
-          <input
-            type="text"
-            placeholder="Enter name"
-            onChange={(event) => {
-              const value = event.target.value;
-              for (let i = 0; i < value.length; i++) {
-                if (!this.isValidFirebasePath(value)) {
-                  alert("No spaces, slashes, or @'s allowed in name");
-                  return;
-                }
-              }
-              this.setState({ name: event.target.value });
-            }}
-          />
-          <button
-            onClick={() => {
-              console.log("submitting selections");
-              console.log(this.state);
-              const { x_selections, name, indices } = this.state as myState;
-              const time_millis = Date.now().toString();
-              console.log(x_selections);
-              // submit the selections to the firebase rtdb server with a timestamp ensuring uniqueness and traceability
-              set(ref(getDatabase(), `selections/${name}@${time_millis}`), {
-                selections: x_selections,
-                time_millis: time_millis,
-                name: name,
-                indices: indices,
-              }).then(() => {
-                console.log("selections submitted");
-              });
-            }}
-          >
-            Submit
-          </button>
-        </div>
-      );
+          )
+        };
+      }
     } else {
       return <div className="FirebaseComponent">Loading...</div>;
     }
