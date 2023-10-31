@@ -50,9 +50,10 @@ const layout_params: any = {
   dragmode: "select",
   selectdirection: "h",
   xaxis: { zeroline: false },
-  showlegend: true,
+  showlegend: false,
   width: 1000,
   height: 150,
+  hovermode: false,
   margin: {
     l: 25,
     r: 25,
@@ -323,7 +324,7 @@ class FirebaseComponent extends React.Component {
 
     const data_elements_before = {
       x: [...all_x_vals],
-      y: this.new_y_slice(all_y_vals, 0, x0),
+      y: this.new_y_slice(all_y_vals, 0, x0+1),
       type: "scatter",
       name: `sig_${index}`,
       marker: { color: "black" },
@@ -337,7 +338,7 @@ class FirebaseComponent extends React.Component {
     };
     const data_elements_after = {
       x: [...all_x_vals],
-      y: this.new_y_slice(all_y_vals, x1, all_y_vals.length),
+      y: this.new_y_slice(all_y_vals, x1-1, all_y_vals.length),
       type: "scatter",
       name: `sig_${index}`,
       marker: { color: "black" },
@@ -418,8 +419,9 @@ class FirebaseComponent extends React.Component {
                   data={[plotData[0], plotData[1], plotData[2]]}
                   layout={JSON.parse(JSON.stringify(layout_params))}
                   config={{
-                    scrollZoom: true,
+                    scrollZoom: false,
                     responsive: false,
+                    displayModeBar: false,
                   }}
                   onSelected={(e) => {
                     console.log(`plot ${current_plot_idx} selected`);
