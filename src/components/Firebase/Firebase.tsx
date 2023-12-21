@@ -3,17 +3,18 @@
  * Date: 2023-09-02
  * Description: This file contains the FirebaseComponent class.
  * The FirebaseComponent class is a React component that renders
- * a list of Plotly <Plot/> components. The data for the plots
+ * a list of Plotly <Plot/> components. The data for the plot_data
  * is retrieved from the firebase Realtime Database (rtdb) server. The user can
  * select a range of data in a plot and submit the selection
  * to the rtdb server in this component.
  */
 
-import React from "react";
+import React, { useRef, useState } from "react";
 import "./Firebase.css";
 import { initializeApp } from "firebase/app";
 import "firebase/analytics";
 import { get, getDatabase, ref, set } from "firebase/database";
+
 import Plot from "react-plotly.js";
 
 const initializeFirebase = () => {
@@ -33,11 +34,13 @@ const initializeFirebase = () => {
   // getAnalytics(appreturn);
 };
 
-interface myState {
+interface MyState {
   name: string;
   x_selections: number[][];
   indices: number[];
-  plots: any[];
+  plot_data: any[];
+  plot_divs: JSX.Element[];
+  plot_data_initialized: boolean[];
   current_plot_idx: number;
   sig_count: number;
   display_count: number;
@@ -49,7 +52,10 @@ const layout_params: any = {
   // Layout
   dragmode: "select",
   selectdirection: "h",
-  xaxis: { zeroline: false },
+  xaxis: {
+    zeroline: false,
+  },
+  // selection: {fixedrange: true},
   showlegend: false,
   width: 1000,
   height: 150,
@@ -66,13 +72,15 @@ const layout_params: any = {
 class FirebaseComponent extends React.Component {
   // this constructor wants to set the state and initialize the page
   // x_selections will be sent to the firebase rtdb server
-  // and plots will be rendered on the page
+  // and plot_data will be rendered on the page
   sigs_for_test = 9;
   constructor(props: any) {
     super(props);
     this.state = {
       x_selections: [] as number[][],
-      plots: [] as any[],
+      plot_data: [] as any[],
+      plots_initialized: [] as boolean[],
+      plot_divs: [] as JSX.Element[],
       current_plot_idx: 0 as number,
       sig_count: 0 as number,
       display_count: 0 as number,
@@ -88,6 +96,7 @@ class FirebaseComponent extends React.Component {
   // render() renders the <Plot/> components.
 
   initializePage() {
+    // integer
     const test_sigs: number = this.sigs_for_test;
     console.log(this.state);
     this.getSigCount().then((num_sigs) => {
@@ -103,6 +112,13 @@ class FirebaseComponent extends React.Component {
       }
 
       this.setState({ display_count: test_sigs });
+
+      // replot: init plot_data_initialized to array of false
+      var plt_init = Array<boolean>(test_sigs);
+      for (let i = 0; i < test_sigs; i++) {
+        plt_init[i] = false;
+      }
+      this.setState({ plot_data_initialized: plt_init });
 
       // This is the list we'll use to initialize the state
       const x_selections: number[][] = [];
@@ -127,7 +143,7 @@ class FirebaseComponent extends React.Component {
       console.log(sig_refs);
       // get data for the sigs
       const dataPromise = this.getSigs(sig_refs);
-      // with the data, make the plots:
+      // with the data, make the plot_data:
       dataPromise.then((data) => {
         //x_list is a list of lists of x-axes/time (one for each sig)
         const x_list = [];
@@ -148,8 +164,8 @@ class FirebaseComponent extends React.Component {
         // to the <Plot/> components. before and after will be plotted black
         // and burst will be plotted red.
         for (let i = 0; i < x_list.length; i++) {
-          // updatePlot will update the before, burst, and after plots
-          // so the before and after plots won't always be empty
+          // updatePlot will update the before, burst, and after plot_data
+          // so the before and after plot_data won't always be empty
           const data_elements_before = {
             x: [],
             y: [],
@@ -192,7 +208,7 @@ class FirebaseComponent extends React.Component {
         }
         console.log(plotly_burst.length);
         this.setState({
-          plots: plotly_burst,
+          plot_data: plotly_burst,
         });
       });
     });
@@ -316,15 +332,30 @@ class FirebaseComponent extends React.Component {
   // new_y_before=[NaN,...,NaN,y[0],...,y[1]-1,NaN,...,NaN]
   updatePlot(index: number, x0: number, x1: number) {
     console.log(`updating plot ${index}`);
-    const { plots, x_selections } = this.state as myState;
-    const plot_4_tuple = plots[index];
+    const { plot_data, x_selections, plot_divs } = this.state as MyState;
+    const plot_4_tuple = plot_data[index];
     // at any moment, the concatenated x_vals and y_vals have same length: the signal length
     const all_x_vals = plot_4_tuple[3].x;
     const all_y_vals = plot_4_tuple[3].y;
 
+    if (
+      x0 == plot_4_tuple[0].x.length - 1 &&
+      x1 == plot_4_tuple[1].x.length + plot_4_tuple[0].x.length - 1
+    ) {
+      console.log("no change");
+      return;
+    } else {
+      console.log(
+        x0,
+        plot_4_tuple[0].x.length,
+        x1,
+        plot_4_tuple[1].x.length + plot_4_tuple[0].x.length
+      );
+    }
+
     const data_elements_before = {
       x: [...all_x_vals],
-      y: this.new_y_slice(all_y_vals, 0, x0+1),
+      y: this.new_y_slice(all_y_vals, 0, x0 + 1),
       type: "scatter",
       name: `sig_${index}`,
       marker: { color: "black" },
@@ -338,7 +369,7 @@ class FirebaseComponent extends React.Component {
     };
     const data_elements_after = {
       x: [...all_x_vals],
-      y: this.new_y_slice(all_y_vals, x1-1, all_y_vals.length),
+      y: this.new_y_slice(all_y_vals, x1 - 1, all_y_vals.length),
       type: "scatter",
       name: `sig_${index}`,
       marker: { color: "black" },
@@ -351,12 +382,24 @@ class FirebaseComponent extends React.Component {
       // it should never change
       plot_4_tuple[3],
     ];
+    // update the plot_div with the new plot_4_tuple
+    let plotly_plot_div = this.getPlot(index);
+    if (plotly_plot_div == null) {
+      console.log("plotly_plot_div is null");
+      return;
+    }
+    let divcopy = React.cloneElement(plotly_plot_div, {
+      data: [new_plot_4_tuple[0], new_plot_4_tuple[1], new_plot_4_tuple[2]],
+    });
+
+    this.setPlot(index, divcopy);
     // only update plot[index].
-    plots[index] = new_plot_4_tuple;
+    plot_data[index] = new_plot_4_tuple;
     x_selections[index] = [x0, x1];
+    // layout_params.xaxis.rangeselector.range = [x0, x1];
     this.setState({
       x_selections: x_selections,
-      plots: plots,
+      plot_data: plot_data,
     });
   }
   isValidFirebasePath(path: string) {
@@ -384,22 +427,9 @@ class FirebaseComponent extends React.Component {
     return true;
   }
 
-  // Layout:
-  // <div> : Named after component
-  //  *List of Plots*
-  //  *input field* *submit button*
-  // </div>
-  render() {
-    console.log("rendering");
-    const { plots, current_plot_idx, sig_count, display_count, submitted, begun } = this
-      .state as myState;
-
-    console.log(`current idx: ${current_plot_idx}. Total: ${display_count}`);
-    if (plots.length > 0) {
-      let plotData = plots[current_plot_idx];
-      if (!begun) {
-        return(
-        <button
+  beginButton() {
+    return (
+      <button
         className="input_fb"
         onClick={() => {
           console.log("going to next signal");
@@ -407,107 +437,172 @@ class FirebaseComponent extends React.Component {
         }}
       >
         Begin
-      </button>)
+      </button>
+    );
+  }
+
+  submissionButtons() {
+    return (
+      <div>
+        <input
+          className="input_fb"
+          type="text"
+          placeholder="Enter name"
+          onChange={(event) => {
+            const value = event.target.value;
+            for (let i = 0; i < value.length; i++) {
+              if (!this.isValidFirebasePath(value)) {
+                alert("No spaces, slashes, or @'s allowed in name");
+                return;
+              }
+            }
+            this.setState({ name: event.target.value });
+          }}
+        />
+        <button
+          className="input_fb"
+          onClick={() => {
+            console.log("submitting selections");
+            console.log(this.state);
+            const { x_selections, name, indices } = this.state as MyState;
+            const time_millis = Date.now().toString();
+            console.log(x_selections);
+            // submit the selections to the firebase rtdb server with a timestamp ensuring uniqueness and traceability
+            set(ref(getDatabase(), `selections/${name}@${time_millis}`), {
+              selections: x_selections,
+              time_millis: time_millis,
+              name: name,
+              indices: indices,
+            }).then(() => {
+              console.log("selections submitted");
+              this.setState({ submitted: true });
+            });
+          }}
+        >
+          Submit
+        </button>
+      </div>
+    );
+  }
+
+  postSubMessage() {
+    return <div className="input_fb">Thank you for your participation!</div>;
+  }
+
+  noSigMessage() {
+    return <div className="input_fb">There are no sigs to show</div>;
+  }
+
+  undefinedNullMessage() {
+    return <div className="input_fb">Undefined or null</div>;
+  }
+
+  getPlot(plot_idx: number) {
+    const { display_count, plot_data_initialized, plot_data, plot_divs } = this
+      .state as MyState;
+    if (0 > plot_idx || plot_idx >= display_count) {
+      return null;
+    }
+    if (plot_data_initialized[plot_idx]) {
+      return plot_divs[plot_idx];
+    }
+
+    plot_data_initialized[plot_idx] = true;
+    let plotData = plot_data[plot_idx];
+    let plotly_plot_div = (
+      <div>
+        <Plot
+          key={plot_idx}
+          data={[plotData[0], plotData[1], plotData[2]]}
+          layout={JSON.parse(JSON.stringify(layout_params))}
+          config={{
+            scrollZoom: false,
+            responsive: false,
+            displayModeBar: false,
+          }}
+          onSliderChange={(e) => {
+            console.log(e);
+          }}
+          onSelected={(e) => {
+            console.log(`plot ${plot_idx} selected`);
+            console.log(e);
+            // console.log(e);
+            if (e == undefined) {
+              this.updatePlot(plot_idx, 0, plotData[3].x.length);
+              return;
+            }
+            if (e.range == undefined) {
+              return;
+            }
+            // the Plotly selection event returns non-integral floats
+            const x0 = Math.floor(e.range.x[0]);
+            const x1 = Math.floor(e.range.x[1]);
+            if (x0 == undefined || x1 == undefined) {
+              return;
+            } else {
+              console.log(x0, x1);
+            }
+            this.updatePlot(plot_idx, x0, x1);
+            console.log(this.state);
+          }}
+        />
+        <br/>
+        <button
+          className="input_fb"
+          onClick={() => {
+            console.log("going to next signal");
+            this.setState({ current_plot_idx: plot_idx + 1 });
+          }}>
+          Next Signal
+          </button>
+      </div>
+    );
+    plot_divs[plot_idx] = plotly_plot_div;
+    return plotly_plot_div;
+  }
+
+  setPlot(plot_idx: number, plotly_plot_div: JSX.Element) {
+    const { plot_divs } = this.state as MyState;
+    plot_divs[plot_idx] = plotly_plot_div;
+    this.setState({ plot_divs: plot_divs });
+  }
+
+  // Layout:
+  // <div> : Named after component
+  //  *List of plot_data*
+  //  *input field* *submit button*
+  // </div>
+  render() {
+    console.log("rendering");
+    const {
+      plot_data,
+      current_plot_idx,
+      sig_count,
+      display_count,
+      submitted,
+      begun,
+    } = this.state as MyState;
+
+    console.log(`current idx: ${current_plot_idx}. Total: ${display_count}`);
+    if (plot_data.length > 0) {
+      let plotData = plot_data[current_plot_idx];
+      if (!begun) {
+        return this.beginButton();
       }
       if (current_plot_idx < display_count) {
-        return (
-          <div className="FirebaseComponent">
-            {
-              <div>
-                <Plot
-                  key={current_plot_idx}
-                  data={[plotData[0], plotData[1], plotData[2]]}
-                  layout={JSON.parse(JSON.stringify(layout_params))}
-                  config={{
-                    scrollZoom: false,
-                    responsive: false,
-                    displayModeBar: false,
-                  }}
-                  onSelected={(e) => {
-                    console.log(`plot ${current_plot_idx} selected`);
-                    // console.log(e);
-                    if (e == undefined) {
-                      this.updatePlot(
-                        current_plot_idx,
-                        0,
-                        plotData[3].x.length
-                      );
-                      return;
-                    }
-                    if (e.range == undefined) {
-                      return;
-                    }
-                    // the Plotly selection event returns non-integral floats
-                    const x0 = Math.floor(e.range.x[0]);
-                    const x1 = Math.floor(e.range.x[1]);
-                    if (x0 == undefined || x1 == undefined) {
-                      return;
-                    }
-                    this.updatePlot(current_plot_idx, x0, x1);
-                    console.log(this.state);
-                  }}
-                />
-              </div>
-            }
-            <button
-              className="input_fb"
-              onClick={() => {
-                console.log("going to next signal");
-                this.setState({ current_plot_idx: current_plot_idx + 1 });
-              }}
-            >
-              Next
-            </button>
-          </div>
-        );
+        let plot = this.getPlot(current_plot_idx);
+        if (plot == null || plot == undefined) {
+          return this.undefinedNullMessage();
+        }
+        return plot;
       } else if (sig_count == 0) {
-        return <div>There are no sigs to show</div>;
+        return this.noSigMessage();
       } else {
         if (submitted) {
-          return <div className="input_fb">Thank you for your participation!</div>;
+          return this.postSubMessage();
         } else {
-          return (
-            <div>
-              <input
-                className="input_fb"
-                type="text"
-                placeholder="Enter name"
-                onChange={(event) => {
-                  const value = event.target.value;
-                  for (let i = 0; i < value.length; i++) {
-                    if (!this.isValidFirebasePath(value)) {
-                      alert("No spaces, slashes, or @'s allowed in name");
-                      return;
-                    }
-                  }
-                  this.setState({ name: event.target.value });
-                }}
-              />
-              <button
-                className="input_fb"
-                onClick={() => {
-                  console.log("submitting selections");
-                  console.log(this.state);
-                  const { x_selections, name, indices } = this.state as myState;
-                  const time_millis = Date.now().toString();
-                  console.log(x_selections);
-                  // submit the selections to the firebase rtdb server with a timestamp ensuring uniqueness and traceability
-                  set(ref(getDatabase(), `selections/${name}@${time_millis}`), {
-                    selections: x_selections,
-                    time_millis: time_millis,
-                    name: name,
-                    indices: indices,
-                  }).then(() => {
-                    console.log("selections submitted");
-                    this.setState({ submitted: true });
-                  });
-                }}
-              >
-                Submit
-              </button>
-            </div>
-          )
-        };
+          return this.submissionButtons();
+        }
       }
     } else {
       return <div className="FirebaseComponent">Loading...</div>;
