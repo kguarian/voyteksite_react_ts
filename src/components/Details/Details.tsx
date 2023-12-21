@@ -9,8 +9,9 @@ class Details extends React.Component {
           series data.
         </p>
         <p>
-          Please select the time interval where the signal shows oscillatory
-          activity, if such an interval exists.
+          Please select the (horizontal) time interval where the signal shows oscillatory
+          activity, if such an interval exists. Though you can select a vertical interval,
+          it will not be used in the analysis.
         </p>
         <p>
           The signal may have no oscillatory activity, so you might not select

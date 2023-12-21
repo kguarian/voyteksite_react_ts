@@ -16,7 +16,6 @@ import "firebase/analytics";
 import { get, getDatabase, ref, set } from "firebase/database";
 
 import Plot from "react-plotly.js";
-import { relayout } from "plotly.js";
 
 const initializeFirebase = () => {
   // Initialize Firebase
@@ -55,13 +54,8 @@ const layout_params: any = {
   selectdirection: "h",
   xaxis: {
     zeroline: false,
-    showline: false,
   },
-
-  yaxis: {
-    autorange: true,
-    // fixedrange: true,
-  },
+  // selection: {fixedrange: true},
   showlegend: false,
   width: 1000,
   height: 150,
@@ -121,10 +115,11 @@ class FirebaseComponent extends React.Component {
 
       // replot: init plot_data_initialized to array of false
       var plt_init = Array<boolean>(test_sigs);
+      var plot_divs = Array<JSX.Element>(test_sigs);
       for (let i = 0; i < test_sigs; i++) {
         plt_init[i] = false;
       }
-      this.setState({ plot_data_initialized: plt_init });
+      this.setState({ plot_divs: plot_divs, plot_data_initialized: plt_init });
 
       // This is the list we'll use to initialize the state
       const x_selections: number[][] = [];
@@ -344,6 +339,21 @@ class FirebaseComponent extends React.Component {
     const all_x_vals = plot_4_tuple[3].x;
     const all_y_vals = plot_4_tuple[3].y;
 
+    // if (
+    //   x0 == plot_4_tuple[0].x.length - 1 &&
+    //   x1 == plot_4_tuple[1].x.length + plot_4_tuple[0].x.length - 1
+    // ) {
+    //   console.log("no change");
+    //   return;
+    // } else {
+    //   console.log(
+    //     x0,
+    //     plot_4_tuple[0].x.length,
+    //     x1,
+    //     plot_4_tuple[1].x.length + plot_4_tuple[0].x.length
+    //   );
+    // }
+
     const data_elements_before = {
       x: [...all_x_vals],
       y: this.new_y_slice(all_y_vals, 0, x0 + 1),
@@ -380,10 +390,9 @@ class FirebaseComponent extends React.Component {
       return;
     }
     let divcopy = React.cloneElement(plotly_plot_div, {
-      // yaxis: {range: [Math.min(...all_y_vals), Math.max(...all_y_vals)]},
       data: [new_plot_4_tuple[0], new_plot_4_tuple[1], new_plot_4_tuple[2]],
     });
-
+    console.log("preparing setPlot");
     this.setPlot(index, divcopy);
     // only update plot[index].
     plot_data[index] = new_plot_4_tuple;
@@ -501,42 +510,55 @@ class FirebaseComponent extends React.Component {
 
     plot_data_initialized[plot_idx] = true;
     let plotData = plot_data[plot_idx];
+    // initial value for each signal/plot
     let plotly_plot_div = (
-      <Plot
-        key={plot_idx}
-        data={[plotData[0], plotData[1], plotData[2]]}
-        layout={JSON.parse(JSON.stringify(layout_params))}
-        config={{
-          scrollZoom: false,
-          responsive: false,
-          displayModeBar: false,
-        }}
-        onSliderChange={(e) => {
-          console.log(e);
-        }}
-        onSelected={(e) => {
-          console.log(`plot ${plot_idx} selected`);
-          console.log(e);
-          // console.log(e);
-          if (e == undefined) {
-            this.updatePlot(plot_idx, 0, plotData[3].x.length);
-            return;
-          }
-          if (e.range == undefined) {
-            return;
-          }
-          // the Plotly selection event returns non-integral floats
-          const x0 = Math.floor(e.range.x[0]);
-          const x1 = Math.floor(e.range.x[1]);
-          if (x0 == undefined || x1 == undefined) {
-            return;
-          } else {
-            console.log(x0, x1);
-          }
-          this.updatePlot(plot_idx, x0, x1);
-          console.log(this.state);
-        }}
-      />
+      <div>
+        <Plot
+          key={plot_idx}
+          data={[plotData[0], plotData[1], plotData[2]]}
+          layout={JSON.parse(JSON.stringify(layout_params))}
+          config={{
+            scrollZoom: false,
+            responsive: false,
+            displayModeBar: false,
+          }}
+          onSelected={(e) => {
+            console.log(`plot ${plot_idx} selected`);
+            console.log(e);
+            // console.log(e);
+            if (e == undefined) {
+              this.updatePlot(plot_idx, 0, plotData[3].x.length);
+              console.log("e is undefined");
+              return;
+            }
+            if (e.range == undefined) {
+              console.log("e.range is undefined");
+              return;
+            }
+            // the Plotly selection event returns non-integral floats
+            const x0 = Math.floor(e.range.x[0]);
+            const x1 = Math.floor(e.range.x[1]);
+            if (x0 == undefined || x1 == undefined) {
+              console.log("x0 or x1 is undefined");
+              return;
+            } else {
+              console.log(x0, x1);
+            }
+            this.updatePlot(plot_idx, x0, x1);
+            console.log(this.state);
+          }}
+        />
+        <br />
+        <button
+          className="input_fb"
+          onClick={() => {
+            console.log("going to next signal");
+            this.setState({ current_plot_idx: plot_idx + 1 });
+          }}
+        >
+          Next Signal
+        </button>
+      </div>
     );
     plot_divs[plot_idx] = plotly_plot_div;
     return plotly_plot_div;
@@ -575,17 +597,7 @@ class FirebaseComponent extends React.Component {
         if (plot == null || plot == undefined) {
           return this.undefinedNullMessage();
         }
-        return (
-          <div>
-            {plot}
-            <br/>
-            <button
-              onClick={() => {
-                this.setState({ current_plot_idx: current_plot_idx + 1 });
-              }}
-            >Next Signal</button>
-          </div>
-        );
+        return plot;
       } else if (sig_count == 0) {
         return this.noSigMessage();
       } else {
