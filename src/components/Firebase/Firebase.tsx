@@ -54,12 +54,13 @@ const layout_params: any = {
   dragmode: "select",
   selectdirection: "h",
   xaxis: {
+    fixedrange: true,
     zeroline: false,
     showline: false,
   },
 
   yaxis: {
-    autorange: true,
+    fixedrange: true,
     // fixedrange: true,
   },
   showlegend: false,
@@ -578,12 +579,11 @@ class FirebaseComponent extends React.Component {
         return (
           <div>
             {plot}
-            <br/>
             <button
               onClick={() => {
                 this.setState({ current_plot_idx: current_plot_idx + 1 });
               }}
-            >Next Signal</button>
+            ></button>
           </div>
         );
       } else if (sig_count == 0) {
