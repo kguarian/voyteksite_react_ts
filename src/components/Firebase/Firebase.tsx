@@ -579,11 +579,12 @@ class FirebaseComponent extends React.Component {
         return (
           <div>
             {plot}
-            <button
+            <br/>
+            <button className="input_fb"
               onClick={() => {
                 this.setState({ current_plot_idx: current_plot_idx + 1 });
               }}
-            ></button>
+            >NextPlot</button>
           </div>
         );
       } else if (sig_count == 0) {

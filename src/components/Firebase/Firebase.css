@@ -2,3 +2,6 @@
   font-size: 32px;
 }
 
+.cursor-ns-resize {
+  visibility: hidden;
+}
