@@ -632,7 +632,15 @@ class FirebaseComponent extends React.Component {
           // the Plotly selection event returns non-integral floats
           const x0 = Math.floor(e.range.x[0]);
           const x1 = Math.floor(e.range.x[1]);
-          if (x0 == undefined || x1 == undefined) {
+          if (
+            x0 == undefined ||
+            x1 == undefined ||
+            x0 < 0 ||
+            x1 < 0 ||
+            x0 > x1 ||
+            x0 >= plotData[3].x.length ||
+            x1 >= plotData[3].x.length
+          ) {
             return;
           } else {
             console.log(x0, x1);
