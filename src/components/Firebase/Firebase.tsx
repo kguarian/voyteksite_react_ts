@@ -17,6 +17,8 @@ import { get, getDatabase, ref, set } from "firebase/database";
 
 import Plot from "react-plotly.js";
 import { relayout } from "plotly.js";
+import { Button } from "@mui/material";
+import Details from "../Details/Details";
 
 const initializeFirebase = () => {
   // Initialize Firebase
@@ -422,15 +424,19 @@ class FirebaseComponent extends React.Component {
 
   beginButton() {
     return (
-      <button
-        className="input_fb"
-        onClick={() => {
-          console.log("going to next signal");
-          this.setState({ begun: true });
-        }}
-      >
-        Begin
-      </button>
+      <div>
+        <Details />
+        <Button
+          className="input_fb"
+          style={{ fontSize: "24px" }}
+          onClick={() => {
+            console.log("going to next signal");
+            this.setState({ begun: true });
+          }}
+        >
+          Begin
+        </Button>
+      </div>
     );
   }
 
@@ -567,7 +573,6 @@ class FirebaseComponent extends React.Component {
 
     console.log(`current idx: ${current_plot_idx}. Total: ${display_count}`);
     if (plot_data.length > 0) {
-      let plotData = plot_data[current_plot_idx];
       if (!begun) {
         return this.beginButton();
       }
@@ -579,12 +584,15 @@ class FirebaseComponent extends React.Component {
         return (
           <div>
             {plot}
-            <br/>
-            <button className="input_fb"
+            <br />
+            <Button
+              className="input_fb"
               onClick={() => {
                 this.setState({ current_plot_idx: current_plot_idx + 1 });
               }}
-            >NextPlot</button>
+            >
+              Next Plot
+            </Button>
           </div>
         );
       } else if (sig_count == 0) {

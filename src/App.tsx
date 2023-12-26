@@ -11,8 +11,6 @@ function App() {
   initializeFirebase();
   return (
     <div className="App">
-      <Details />
-      
       <FirebaseComponent />
     </div>
   );
