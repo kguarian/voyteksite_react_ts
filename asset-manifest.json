@@ -1,15 +1,15 @@
 {
   "files": {
     "main.css": "/voyteksite_react_ts/static/css/main.b79296d1.css",
-    "main.js": "/voyteksite_react_ts/static/js/main.dcaaff41.js",
+    "main.js": "/voyteksite_react_ts/static/js/main.15872ca5.js",
     "static/js/787.a2fb415f.chunk.js": "/voyteksite_react_ts/static/js/787.a2fb415f.chunk.js",
     "index.html": "/voyteksite_react_ts/index.html",
     "main.b79296d1.css.map": "/voyteksite_react_ts/static/css/main.b79296d1.css.map",
-    "main.dcaaff41.js.map": "/voyteksite_react_ts/static/js/main.dcaaff41.js.map",
+    "main.15872ca5.js.map": "/voyteksite_react_ts/static/js/main.15872ca5.js.map",
     "787.a2fb415f.chunk.js.map": "/voyteksite_react_ts/static/js/787.a2fb415f.chunk.js.map"
   },
   "entrypoints": [
     "static/css/main.b79296d1.css",
-    "static/js/main.dcaaff41.js"
+    "static/js/main.15872ca5.js"
   ]
 }
